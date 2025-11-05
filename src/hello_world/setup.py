@@ -19,8 +19,10 @@ setup(
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
+        
         'console_scripts': [
-            'hello_world = hello_world.hello_world:main'
+            'hello_world = hello_world.hello_world:main',       # if hello_world.py exists
+            'moveit_test = hello_world.moveit_test:main',      # <- remove extra hello_world
         ],
     },
 )
