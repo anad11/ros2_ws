@@ -22,7 +22,10 @@ ament_target_dependencies(moveit_plan
   geometry_msgs
   moveit_ros_planning_interface
 )
-install(TARGETS moveit_plan DESTINATION lib/${PROJECT_NAME})
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
