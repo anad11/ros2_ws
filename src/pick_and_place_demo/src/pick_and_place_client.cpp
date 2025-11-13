@@ -33,10 +33,9 @@ public:
 
     // Define PlayMotion2 sequence (built-in motions)
     motions_ = {
-      "open_left",     // open gripper
-      "offer_left",    // move to grasp
-      "close_left",    // grasp
-      "home_left",     // move to center
+      "move_to_start_left",
+      "close_left",             // grasp
+      "move_to_pose2_left",     // move to center
       "open_left"      // release
     };
 
@@ -51,28 +50,32 @@ public:
     // Safe to create MoveGroupInterface here
     moveit::planning_interface::MoveGroupInterface move_group(shared_from_this(), "arm_left_torso");
 
-    // Define joint targets (custom pre-pick pose)
-    std::map<std::string, double> target_joint_values = {
-      {"arm_left_1_joint", 0.2},
-      {"arm_left_2_joint", -1.0},
-      {"arm_left_3_joint", 1.2},
-      {"arm_left_4_joint", 1.3},
-      {"arm_left_5_joint", -0.7},
-      {"arm_left_6_joint", 1.0},
-      {"arm_left_7_joint", 0.0}
-    };
+    // // Define joint targets (custom pre-pick pose)
+    // std::map<std::string, double> target_joint_values = {
+    //   {"torso_lift_joint", 0.09999117011102586},
+    //   {"arm_left_1_joint", 1.8822170355311911},
+    //   {"arm_left_2_joint", -0.7588440798161304},
+    //   {"arm_left_3_joint", -1.275038949509204},
+    //   {"arm_left_4_joint", -1.6180088822247392},
+    //   {"arm_left_5_joint", -1.3370852919402303},
+    //   {"arm_left_6_joint", 2.2447343528133707},
+    //   {"arm_left_7_joint", -0.24184312913645645}
+    // };
 
-    move_group.setJointValueTarget(target_joint_values);
+    move_group.setStartStateToCurrentState();
+    move_group.setPlanningTime(10.0);
+
+    // move_group.setJointValueTarget(target_joint_values);
     move_group.setMaxVelocityScalingFactor(0.3);
     move_group.setMaxAccelerationScalingFactor(0.3);
 
-    auto success = (move_group.move() == moveit::core::MoveItErrorCode::SUCCESS);
+  //   auto success = (move_group.move() == moveit::core::MoveItErrorCode::SUCCESS);
 
-    if (success)
-      RCLCPP_INFO(get_logger(), "Arm moved to start pose successfully.");
-    else
-      RCLCPP_ERROR(get_logger(), "Failed to reach start pose.");
-  }
+  //   if (success)
+  //     RCLCPP_INFO(get_logger(), "Arm moved to start pose successfully.");
+  //   else
+  //     RCLCPP_ERROR(get_logger(), "Failed to reach start pose.");
+  // }
 
   // Start the pick-and-place sequence
   void start_sequence()
