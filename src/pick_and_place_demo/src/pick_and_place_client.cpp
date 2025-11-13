@@ -8,6 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "play_motion2_msgs/action/play_motion2.hpp"
+#include "play_motion2_msgs/srv/add_motion.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 
 using namespace std::chrono_literals;
@@ -31,56 +32,37 @@ public:
       return;
     }
 
-    // Define PlayMotion2 sequence (built-in motions)
+    // 🔹 Register custom motions automatically
+    add_custom_motion("move_to_start_left",
+      "Move to Start Left",
+      "Custom start pose for left arm and torso",
+      {"torso_lift_joint","arm_left_1_joint","arm_left_2_joint","arm_left_3_joint","arm_left_4_joint","arm_left_5_joint","arm_left_6_joint","arm_left_7_joint"},
+      {0.09999, 1.882217, -0.75884, -1.27504, -1.61801, -1.33709, 2.24473, -0.24184},
+      {5.0});
+
+    add_custom_motion("move_to_pose2_left",
+      "Move to Pose2 Left",
+      "Second pick pose for left arm",
+      {"torso_lift_joint","arm_left_1_joint","arm_left_2_joint","arm_left_3_joint","arm_left_4_joint","arm_left_5_joint","arm_left_6_joint","arm_left_7_joint"},
+      {0.09309, 1.91417, 0.02856, -0.95636, -1.64450, -0.93527, 2.14104, -0.80890},
+      {5.0});
+
+    // Define PlayMotion2 sequence
     motions_ = {
+      "open_left",
       "move_to_start_left",
-      "close_left",             // grasp
-      "move_to_pose2_left",     // move to center
-      "open_left"      // release
+      "close_left",
+      "move_to_pose2_left",
+      "open_left"
     };
 
     current_motion_ = 0;
   }
 
-  //  Called externally, after the node is fully constructed
-  void move_to_start_pose()
-  {
-    RCLCPP_INFO(get_logger(), "Moving arm_left_torso to custom start pose...");
-
-    // Safe to create MoveGroupInterface here
-    moveit::planning_interface::MoveGroupInterface move_group(shared_from_this(), "arm_left_torso");
-
-    // // Define joint targets (custom pre-pick pose)
-    // std::map<std::string, double> target_joint_values = {
-    //   {"torso_lift_joint", 0.09999117011102586},
-    //   {"arm_left_1_joint", 1.8822170355311911},
-    //   {"arm_left_2_joint", -0.7588440798161304},
-    //   {"arm_left_3_joint", -1.275038949509204},
-    //   {"arm_left_4_joint", -1.6180088822247392},
-    //   {"arm_left_5_joint", -1.3370852919402303},
-    //   {"arm_left_6_joint", 2.2447343528133707},
-    //   {"arm_left_7_joint", -0.24184312913645645}
-    // };
-
-    move_group.setStartStateToCurrentState();
-    move_group.setPlanningTime(10.0);
-
-    // move_group.setJointValueTarget(target_joint_values);
-    move_group.setMaxVelocityScalingFactor(0.3);
-    move_group.setMaxAccelerationScalingFactor(0.3);
-
-  //   auto success = (move_group.move() == moveit::core::MoveItErrorCode::SUCCESS);
-
-  //   if (success)
-  //     RCLCPP_INFO(get_logger(), "Arm moved to start pose successfully.");
-  //   else
-  //     RCLCPP_ERROR(get_logger(), "Failed to reach start pose.");
-  // }
-
-  // Start the pick-and-place sequence
   void start_sequence()
   {
     RCLCPP_INFO(get_logger(), "Starting pick-and-place sequence...");
+    rclcpp::sleep_for(1s);
     send_next_motion();
   }
 
@@ -89,10 +71,52 @@ private:
   std::vector<std::string> motions_;
   size_t current_motion_;
 
+  // 🔹 Generic function to add any motion
+  void add_custom_motion(
+      const std::string &key,
+      const std::string &name,
+      const std::string &description,
+      const std::vector<std::string> &joints,
+      const std::vector<double> &positions,
+      const std::vector<double> &times)
+  {
+    auto add_motion_client =
+      this->create_client<play_motion2_msgs::srv::AddMotion>("/play_motion2/add_motion");
+
+    if (!add_motion_client->wait_for_service(10s)) {
+      RCLCPP_ERROR(get_logger(), "AddMotion service not available!");
+      return;
+    }
+
+    auto request = std::make_shared<play_motion2_msgs::srv::AddMotion::Request>();
+    request->motion.key = key;
+    request->motion.name = name;
+    request->motion.usage = "user_defined";
+    request->motion.description = description;
+    request->motion.joints = joints;
+    request->motion.positions = positions;
+    request->motion.times_from_start = times;
+    request->overwrite = true;
+
+    RCLCPP_INFO(get_logger(), "Adding motion '%s'...", key.c_str());
+    auto future = add_motion_client->async_send_request(request);
+
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, 5s)
+        == rclcpp::FutureReturnCode::SUCCESS)
+    {
+      RCLCPP_INFO(get_logger(), "Motion '%s' added successfully.", key.c_str());
+    }
+    else
+    {
+      RCLCPP_WARN(get_logger(), "Timeout while adding motion '%s' (it may already exist).", key.c_str());
+    }
+  }
+
+  // 🔹 Execute each motion sequentially
   void send_next_motion()
   {
     if (current_motion_ >= motions_.size()) {
-      RCLCPP_INFO(get_logger(), " Pick-and-place sequence complete");
+      RCLCPP_INFO(get_logger(), "Pick-and-place sequence complete.");
       rclcpp::shutdown();
       return;
     }
@@ -112,7 +136,7 @@ private:
         if (!handle) {
           RCLCPP_ERROR(this->get_logger(), "Motion %s was rejected.", motion_name.c_str());
         } else {
-          RCLCPP_INFO(this->get_logger(), " Motion %s accepted by server.", motion_name.c_str());
+          RCLCPP_INFO(this->get_logger(), "Motion %s accepted by server.", motion_name.c_str());
         }
       };
 
@@ -126,9 +150,8 @@ private:
                        motion_name.c_str(), result.result->error.c_str());
         }
 
-        // Wait 2 seconds before next motion
-        RCLCPP_INFO(this->get_logger(), "Waiting 2 seconds before next motion...");
-        rclcpp::sleep_for(2s);
+        RCLCPP_INFO(this->get_logger(), "Waiting 1 second before next motion...");
+        rclcpp::sleep_for(1s);
 
         current_motion_++;
         this->send_next_motion();
@@ -138,19 +161,13 @@ private:
   }
 };
 
-
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<PickAndPlaceClient>();
-
-  // ✅ Safe to move the arm now (no more bad_weak_ptr)
-  node->move_to_start_pose();
-
-  // Then start the motion sequence
   node->start_sequence();
-
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
 }
+
